@@ -15,41 +15,48 @@ from PIL import Image
 
 app = FastAPI()
 pipe = AutoPipelineForInpainting.from_pretrained("stabilityai/sdxl-turbo", torch_dtype=torch.float16, variant="fp16").to("cuda")
+#pipe = AutoPipelineForInpainting.from_pretrained("diffusers/stable-diffusion-xl-1.0-inpainting-0.1", torch_dtype=torch.float16, variant="fp16").to("cuda")
 
 # class OutpaintingRequest(BaseModel):
-#     prompt: []
+#     prompt: str
 #     images: []
 #     positions: []
 #     scales: []
 #     resolution: ()
-class OutpaintingRequest(BaseModel):
-    prompt: str
 
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
 
+@app.post("/startsession")
+async def startSession():
+    
+    return
+
 @app.post("/outpainting")
 async def generate(requsetBody: Request):
     requestBodyJsonString = await requsetBody.json()
     requestBodyJsonDict = json.loads(requestBodyJsonString)
-    print('request received, content of body:', requestBodyJsonDict['image'])
-    img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
-    mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
-    
-    image = load_image(img_url).resize((1024, 1024))
-    mask_image = load_image(mask_url).resize((1024, 1024))
+    #print('request received, content of body:', requestBodyJsonDict['image'])
 
     #prompt = "a tiger sitting on a park bench"
     prompt = requestBodyJsonDict['prompt']
     base64image = requestBodyJsonDict['image'][2:-1]
+    base64mask = requestBodyJsonDict['mask'][2:-1]
     # Convert back to image
     #image = retrieve_image(requestBodyJsonDict['image'])
-    image = retriev_image_file(base64image)
+    image = retriev_image_file('input_image.jpg', base64image)
+    mask_image = retriev_image_file('input_mask.jpg', base64mask)
 
-    image = image.resize((1024, 1024))
+    generator = torch.Generator(device="cuda")#.manual_seed(0)
 
-    generator = torch.Generator(device="cuda").manual_seed(0)
+    # img_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo.png"
+    # mask_url = "https://raw.githubusercontent.com/CompVis/latent-diffusion/main/data/inpainting_examples/overture-creations-5sI6fQgYIuo_mask.png"
+    
+    # image = load_image(img_url).resize((1024, 1024))
+    # mask_image = load_image(mask_url).resize((1024, 1024))
+    # image = image.resize((1024, 1024))
+    # mask_image = mask_image.resize((1024, 1024))
 
     image = pipe(
         prompt=prompt,
@@ -61,11 +68,13 @@ async def generate(requsetBody: Request):
         generator=generator,
     ).images[0]
 
-    time_stamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+    #time_stamp = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+    time_stamp = ''
 
     image_file_name = f'outputs/sdxl_image_{time_stamp}.png'
 
-    cv2.imwrite(image_file_name, np.array(image))
+    image = cv2.cvtColor(np.array(image), cv2.COLOR_BGR2RGB)
+    cv2.imwrite(image_file_name, image)
 
     with open(image_file_name, "rb") as image_file:
         encoded_image = base64.b64encode(image_file.read())
@@ -73,9 +82,8 @@ async def generate(requsetBody: Request):
 
     return {"image": req_file}
 
-def retriev_image_file(encoded_data):
+def retriev_image_file(file_name, encoded_data):
     image_byte = base64.b64decode(encoded_data)
-    file_name = 'input_image.jpg'
     with open(file_name, 'wb') as f:
         f.write(image_byte)
     
